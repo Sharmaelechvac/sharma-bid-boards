@@ -1,0 +1,6 @@
+# Safety net for the published repo: plaintext bid data must never land here.
+# Only bids.enc.json (encrypted) belongs in this tree.
+*.plain.json
+*.csv
+data/
+.env

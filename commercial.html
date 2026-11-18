@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Commercial Bid Board — Sharma Electric &amp; HVAC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body data-board="commercial">
+<header class="site">
+  <div class="header-inner">
+    <img class="logo" src="logo.png" alt="Sharma Electric &amp; HVAC">
+    <div class="header-title">
+      <div class="board-name">Commercial Bid Board</div>
+      <div class="board-sub" id="as-of">Owner-only board. Prices are internal.</div>
+    </div>
+  </div>
+  <nav class="board-switch" aria-label="Bid boards">
+    <a href="commercial.html" class="active">Commercial</a>
+    <a href="residential.html" class="">Residential</a>
+  </nav>
+</header>
+<main>
+  <section class="panel" aria-label="Totals">
+    <h2>Totals</h2><div class="gold-rule"></div>
+    <div class="totals" id="totals"></div>
+  </section>
+  <section class="panel" aria-label="Due today and overdue">
+    <h2>Due today / overdue</h2><div class="gold-rule"></div>
+    <ul class="due-list" id="due-list"></ul>
+  </section>
+  <section class="panel" aria-label="Filters">
+    <h2>Find a bid</h2><div class="gold-rule"></div>
+    <div class="filters">
+      <div><label for="f-search">Search</label><input type="search" id="f-search" placeholder="Builder, project, address, contact, Jobber"></div>
+      <div><label for="f-status">Status</label><select id="f-status"></select></div>
+      <div><label for="f-trade">Trade</label><select id="f-trade"></select></div>
+      <div><label for="f-builder">Builder</label><select id="f-builder"></select></div>
+      <div><label for="f-due">Due-date window</label><select id="f-due">
+        <option value="">All due dates</option><option value="today">Due today</option>
+        <option value="overdue">Overdue</option><option value="7">Next 7 days</option>
+        <option value="30">Next 30 days</option><option value="none">No due date</option></select></div>
+      <div><label for="f-sent">Sent-date window</label><select id="f-sent">
+        <option value="">All sent dates</option><option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></div>
+      <div><label for="f-sort">Sort by</label><select id="f-sort">
+        <option value="due">Due date</option><option value="sent">Date sent</option>
+        <option value="amount">Amount</option><option value="builder">Builder</option>
+        <option value="status">Status</option></select></div>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="secondary" id="btn-export">Export CSV</button>
+      <label class="btn secondary" for="file-import" style="cursor:pointer">Import CSV</label>
+      <input type="file" id="file-import" accept=".csv" hidden>
+      <span class="count" id="row-count"></span>
+    </div>
+    <p class="count" id="import-note"></p>
+  </section>
+  <section class="panel" aria-label="Bids" style="padding:0;overflow:auto">
+    <table>
+      <thead><tr><th>Builder</th><th>Project</th><th>Trade</th><th class="amount">Amount</th><th>Sent</th><th>Due</th><th>Status</th><th>Jobber</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <p style="color:var(--gray)">Select a row to see the full record: terms, next step, notes, Jobber number, Gmail thread ID and source.</p>
+</main>
+<dialog id="detail">
+  <div class="detail-head"><h2 id="detail-title" style="margin:0">Bid record</h2></div>
+  <div class="detail-body" id="detail-body"></div>
+  <div style="padding:0 16px 16px"><button type="button" id="detail-close">Close</button></div>
+</dialog>
+<footer class="site">Sharma Electric &amp; HVAC · Lic. EC13013924 · CAC1823596</footer>
+<script src="lock.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
