@@ -93,7 +93,7 @@ function renderTotals() {
   } else {
     ul.innerHTML = t.dueList.map(({ r, due, diff }) => `
       <li><span class="due-when">${diff < 0 ? "Overdue — due " + fmtDate(due) : diff === 0 ? "Due today — " + escapeHtml(r.due_date) : "Due " + fmtDate(due)}</span>
-      <span class="due-builder">${escapeHtml(r.builder)}</span><span>${escapeHtml(r.project)}</span>
+      <span class="due-builder">${escapeHtml(r.builder)}</span><span>${escapeHtml(r.project)}</span>${r.address ? "<span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}
       <span>${escapeHtml(r.trade)}</span><span class="mono">${fmtUSD(amountOf(r))}</span>${chip(r.status)}</li>`).join("");
   }
 }
@@ -165,7 +165,7 @@ function renderTable() {
     const email = r.contact_email ? `<a href="mailto:${escapeHtml(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${escapeHtml(r.contact_email)}</a>` : "";
     return `<tr data-idx="${i}" tabindex="0">
       <td data-label="Builder"><strong>${escapeHtml(r.builder)}</strong><br>${escapeHtml(r.contact_name)}<br>${email}</td>
-      <td data-label="Project">${escapeHtml(r.project)}${r.plan_name ? "<br>" + escapeHtml(r.plan_name) : ""}<br><span style="color:var(--gray)">${escapeHtml(r.address)}</span></td>
+      <td data-label="Project">${escapeHtml(r.project)}${r.plan_name ? "<br>" + escapeHtml(r.plan_name) : ""}${r.address ? "<br><span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}</td>
       <td data-label="Trade">${escapeHtml(r.trade)}</td>
       <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
       <td data-label="Sent" class="mono">${escapeHtml(r.date_sent)}</td>
@@ -188,7 +188,8 @@ function openDetail(i) {
   document.getElementById("detail-title").textContent = `${r.builder} — ${r.project}`;
   document.getElementById("detail-body").innerHTML = "<dl>" + FIELDS.map(k => {
     let v = k === "amount" ? (fmtUSD(amountOf(r)) || "") : r[k];
-    if (k === "contact_email" && v) v = `<a href="mailto:${escapeHtml(String(v).split(";")[0].trim())}">${escapeHtml(v)}</a>`;
+    if (k === "address" && v) v = `<span class="loc">${escapeHtml(v)}</span>`;
+    else if (k === "contact_email" && v) v = `<a href="mailto:${escapeHtml(String(v).split(";")[0].trim())}">${escapeHtml(v)}</a>`;
     else v = escapeHtml(v || "");
     return `<dt>${labels[k]}</dt><dd>${v || '<span style="color:var(--gray)">—</span>'}</dd>`;
   }).join("") + "</dl>";

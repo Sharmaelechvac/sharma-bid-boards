@@ -43,6 +43,7 @@ th{font-family:"Barlow Semi Condensed",Inter,sans-serif;font-weight:700;text-ali
 td{border-bottom:1px solid var(--lines);padding:10px 8px;vertical-align:top;font-size:16px}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--page)}
+.loc{display:inline-block;margin-top:3px;padding:2px 8px;background:var(--page);border-left:4px solid var(--gold);border-radius:0 4px 4px 0;color:var(--dark-navy);font-weight:700}
 .chip{display:inline-block;padding:3px 10px;border-radius:4px;font-size:.92rem;font-weight:600;border:1px solid var(--lines);white-space:nowrap}
 .chip-sent{background:var(--navy);color:var(--white);border-color:var(--navy)}
 .chip-won{background:var(--dark-navy);color:var(--gold);border-color:var(--dark-navy)}
