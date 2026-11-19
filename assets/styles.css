@@ -52,6 +52,7 @@ tbody tr:hover{background:var(--page)}
 .chip-pending{background:var(--gold);color:var(--ink);border-color:var(--gold)}
 .chip-inprogress{background:var(--white);color:var(--navy);border-color:var(--navy)}
 .amount{font-family:"IBM Plex Mono",ui-monospace,monospace;white-space:nowrap;text-align:right}
+.sqft{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
 th.amount{text-align:right}
 dialog#detail{border:1px solid var(--lines);border-radius:6px;max-width:720px;width:calc(100% - 32px);padding:0}
 dialog#detail .detail-head{background:var(--white);border-bottom:3px solid var(--gold);padding:16px}

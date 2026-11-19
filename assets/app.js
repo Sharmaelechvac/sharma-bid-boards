@@ -7,7 +7,8 @@ const OPEN_STATUSES = ["Sent", "Pending", "In progress"];
 const STATUSES = ["Sent", "Won", "Lost", "Declined", "Pending", "In progress"];
 const FIELDS = ["builder","contact_name","contact_email","project","address","plan_name",
   "trade","amount","amount_notes","terms","date_sent","due_date","status",
-  "gmail_account","gmail_thread_id","jobber","houses","next_step","notes","source"];
+  "gmail_account","gmail_thread_id","jobber","houses","next_step","notes","source",
+  "sqft_living","sqft_roof"];
 
 let state = { board: null, title: "", asOf: "2026-11-18", rows: [], filtered: [] };
 
@@ -28,6 +29,14 @@ function fmtUSD(v) {
   if (v === null || v === undefined) return "";
   return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: v % 1 ? 2 : 0 });
 }
+function sqftOf(r, kind) {
+  const v = r["sqft_" + kind + "_value"];
+  if (typeof v === "number") return v;
+  const s = String(r["sqft_" + kind] || "").replace(/,/g, "").trim();
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function fmtSF(v) { return v === null || v === undefined ? "" : v.toLocaleString("en-US") + " sq ft"; }
 function isMutual(r) { return /mutually exclusive/i.test((r.amount_notes || "") + " " + (r.notes || "")); }
 
 function computeTotals(rows, asOfStr) {
@@ -159,7 +168,7 @@ function applyFilters() {
 function renderTable() {
   const tb = document.getElementById("rows");
   document.getElementById("row-count").textContent = `${state.filtered.length} of ${state.rows.length} bids shown`;
-  if (!state.filtered.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">No bids match these filters.</td></tr>`; return; }
+  if (!state.filtered.length) { tb.innerHTML = `<tr><td colspan="9" class="empty">No bids match these filters.</td></tr>`; return; }
   tb.innerHTML = state.filtered.map(r => {
     const i = state.rows.indexOf(r);
     const email = r.contact_email ? `<a href="mailto:${escapeHtml(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${escapeHtml(r.contact_email)}</a>` : "";
@@ -168,6 +177,7 @@ function renderTable() {
       <td data-label="Project">${escapeHtml(r.project)}${r.plan_name ? "<br>" + escapeHtml(r.plan_name) : ""}${r.address ? "<br><span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}</td>
       <td data-label="Trade">${escapeHtml(r.trade)}</td>
       <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
+      <td data-label="Sq Ft" class="sqft">${fmtSF(sqftOf(r, "living"))}${sqftOf(r, "roof") !== null ? "<br><span class=\"loc\">under roof " + fmtSF(sqftOf(r, "roof")) + "</span>" : ""}</td>
       <td data-label="Sent" class="mono">${escapeHtml(r.date_sent)}</td>
       <td data-label="Due" class="mono">${escapeHtml(r.due_date)}</td>
       <td data-label="Status">${chip(r.status)}</td>
@@ -184,10 +194,11 @@ function openDetail(i) {
   const labels = { builder:"Builder", contact_name:"Contact", contact_email:"Contact email", project:"Project",
     address:"Address", plan_name:"Plan", trade:"Trade", amount:"Amount", amount_notes:"Amount notes", terms:"Terms",
     date_sent:"Date sent", due_date:"Due date", status:"Status", gmail_account:"Gmail account",
-    gmail_thread_id:"Gmail thread ID", jobber:"Jobber", houses:"Houses", next_step:"Next step", notes:"Notes", source:"Source" };
+    gmail_thread_id:"Gmail thread ID", jobber:"Jobber", houses:"Houses", next_step:"Next step", notes:"Notes", source:"Source",
+    sqft_living: state.board === "commercial" ? "Project sq ft" : "Living SF", sqft_roof: "Under Roof SF" };
   document.getElementById("detail-title").textContent = `${r.builder} — ${r.project}`;
   document.getElementById("detail-body").innerHTML = "<dl>" + FIELDS.map(k => {
-    let v = k === "amount" ? (fmtUSD(amountOf(r)) || "") : r[k];
+    let v = k === "amount" ? (fmtUSD(amountOf(r)) || "") : (k === "sqft_living" || k === "sqft_roof") ? fmtSF(sqftOf(r, k.slice(5))) : r[k];
     if (k === "address" && v) v = `<span class="loc">${escapeHtml(v)}</span>`;
     else if (k === "contact_email" && v) v = `<a href="mailto:${escapeHtml(String(v).split(";")[0].trim())}">${escapeHtml(v)}</a>`;
     else v = escapeHtml(v || "");
