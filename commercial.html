@@ -4,9 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#264387">
+<meta name="color-scheme" content="light">
+<script>(function(){try{if(localStorage.getItem("sk-scheme")==="dark"){var d=document.documentElement;d.setAttribute("data-scheme","dark");var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=d.getAttribute("data-theme")==="track"?"#1C1C1E":"#1a2f61"}}catch(e){}})()</script>
+<link rel="stylesheet" href="https://sharma-kit.sharma-crew.workers.dev/sharma-kit.css">
+<script src="https://sharma-kit.sharma-crew.workers.dev/sharma-kit.js" defer></script>
 <title>Commercial Bid Board — Sharma Electric &amp; HVAC</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body data-board="commercial">
@@ -53,6 +56,7 @@
     </div>
     <div class="toolbar">
       <button type="button" class="secondary" id="btn-export">Export CSV</button>
+      <button type="button" class="secondary" id="btn-more">More</button>
       <label class="btn secondary" for="file-import" style="cursor:pointer">Import CSV</label>
       <input type="file" id="file-import" accept=".csv" hidden>
       <span class="count" id="row-count"></span>
@@ -73,6 +77,14 @@
   <div style="padding:0 16px 16px"><button type="button" id="detail-close">Close</button></div>
 </dialog>
 <footer class="site">Sharma Electric &amp; HVAC · Lic. EC13013924 · CAC1823596</footer>
+<dialog id="more" aria-labelledby="more-title">
+  <div class="detail-head"><h2 id="more-title" style="margin:0">More</h2></div>
+  <div class="detail-body">
+    <h3 style="margin:0 0 8px">Display</h3>
+    <div class="sk-list" id="appearance"></div>
+    <div class="toolbar"><button type="button" class="secondary" id="more-close">Close</button></div>
+  </div>
+</dialog>
 <script src="lock.js"></script>
 <script src="assets/app.js"></script>
 </body>

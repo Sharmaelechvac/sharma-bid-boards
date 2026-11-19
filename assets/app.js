@@ -76,6 +76,20 @@ function computeTotals(rows, asOfStr) {
   return { pipeline, won, lost, wonN, lostN, due7, dueList, winRate, excludedCount: excludedIdx.size };
 }
 
+function slugify(name) { return String(name || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
+function initials(name) {
+  const words = String(name || "").replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  return (words[0][0] + (words.length > 1 ? words[1][0] : "")).toUpperCase();
+}
+/* Company logo: real file from assets/logos/<slug>.(png|svg) when the logos sweep has
+   dropped one in; the navy initials badge shows underneath either way, so a missing
+   file never breaks the row. The slug lives inside the encrypted data (row.logo). */
+function logoHtml(r, cls) {
+  const slug = r.logo || slugify(r.builder);
+  return `<span class="bid-logo-wrap ${cls || ""}"><span class="bid-badge">${escapeHtml(initials(r.builder))}</span>`
+    + `<img class="bid-logo" src="assets/logos/${escapeHtml(slug)}.png" alt="" loading="lazy" onerror="this.remove()"></span>`;
+}
 function chip(status) {
   const cls = { "Sent": "chip-sent", "Won": "chip-won", "Lost": "chip-lost",
     "Declined": "chip-declined", "Pending": "chip-pending", "In progress": "chip-inprogress" }[status] || "";
@@ -173,7 +187,7 @@ function renderTable() {
     const i = state.rows.indexOf(r);
     const email = r.contact_email ? `<a href="mailto:${escapeHtml(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${escapeHtml(r.contact_email)}</a>` : "";
     return `<tr data-idx="${i}" tabindex="0">
-      <td data-label="Builder"><strong>${escapeHtml(r.builder)}</strong><br>${escapeHtml(r.contact_name)}<br>${email}</td>
+      <td data-label="Builder">${logoHtml(r)}<strong>${escapeHtml(r.builder)}</strong><br>${escapeHtml(r.contact_name)}<br>${email}</td>
       <td data-label="Project">${escapeHtml(r.project)}${r.plan_name ? "<br>" + escapeHtml(r.plan_name) : ""}${r.address ? "<br><span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}</td>
       <td data-label="Trade">${escapeHtml(r.trade)}</td>
       <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
@@ -196,7 +210,7 @@ function openDetail(i) {
     date_sent:"Date sent", due_date:"Due date", status:"Status", gmail_account:"Gmail account",
     gmail_thread_id:"Gmail thread ID", jobber:"Jobber", houses:"Houses", next_step:"Next step", notes:"Notes", source:"Source",
     sqft_living: state.board === "commercial" ? "Project sq ft" : "Living SF", sqft_roof: "Under Roof SF" };
-  document.getElementById("detail-title").textContent = `${r.builder} — ${r.project}`;
+  document.getElementById("detail-title").innerHTML = logoHtml(r, "detail-logo") + escapeHtml(`${r.builder} — ${r.project}`);
   document.getElementById("detail-body").innerHTML = "<dl>" + FIELDS.map(k => {
     let v = k === "amount" ? (fmtUSD(amountOf(r)) || "") : (k === "sqft_living" || k === "sqft_roof") ? fmtSF(sqftOf(r, k.slice(5))) : r[k];
     if (k === "address" && v) v = `<span class="loc">${escapeHtml(v)}</span>`;
@@ -271,5 +285,11 @@ async function init() {
     document.getElementById("import-note").textContent = `Imported ${rows.length} rows from ${f.name} for this view only. To make it permanent, save the CSV with the board data and re-run the encrypt step (tools/encrypt.py).`;
   });
   document.getElementById("detail-close").addEventListener("click", () => document.getElementById("detail").close());
+  const moreBtn = document.getElementById("btn-more");
+  if (moreBtn) moreBtn.addEventListener("click", () => document.getElementById("more").showModal());
+  const moreClose = document.getElementById("more-close");
+  if (moreClose) moreClose.addEventListener("click", () => document.getElementById("more").close());
+  const ap = document.getElementById("appearance");
+  if (ap && window.SK && SK.scheme && SK.scheme.mountToggle) SK.scheme.mountToggle(ap);
 }
 document.addEventListener("DOMContentLoaded", init);
