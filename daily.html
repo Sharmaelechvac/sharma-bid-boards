@@ -37,6 +37,7 @@
       <div class="board-name">Daily Update</div>
       <div class="board-sub">The past 7 days across both bid boards. Owner-only. Prices are internal.</div>
     </div>
+    <button type="button" class="secondary header-refresh" data-refresh aria-label="Refresh — get the newest copy"><svg class="sk-icon"><use href="#i-refresh"/></svg><span class="refresh-label">Refresh</span></button>
   </div>
   <nav class="board-switch" aria-label="Bid boards">
     <a href="commercial.html">Commercial</a>
@@ -52,4 +53,5 @@
 <script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) { addEventListener("load", function(){ navigator.serviceWorker.register("sw.js?kit=https://sharma-kit.sharma-crew.workers.dev", { scope: "/sharma-bid-boards/" }).catch(function(){}); }); }</script>
 <script src="lock.js"></script>
 <script src="assets/daily.js"></script>
+<script src="assets/refresh.js"></script>
 </body></html>

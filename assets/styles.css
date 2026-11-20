@@ -237,3 +237,10 @@ footer.site{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
 [data-scheme="dark"] .du-sample{background:#3a2f10}
 .fu-tag{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#fdf0d5;color:#7a5200;font-size:.8rem;font-weight:700}
 [data-scheme="dark"] .fu-tag{background:#4d3d14;color:#ffe1a1}
+
+/* Refresh button (assets/refresh.js) */
+[data-refresh]{gap:8px}
+[data-refresh] .sk-icon{width:20px;height:20px}
+@keyframes sharma-refresh-spin{to{transform:rotate(360deg)}}
+[data-refresh].is-updating .sk-icon{animation:sharma-refresh-spin .9s linear infinite}
+.header-refresh{margin-left:auto;flex:none}

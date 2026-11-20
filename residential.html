@@ -88,6 +88,7 @@
       <button type="button" id="btn-select" aria-pressed="false">Select</button>
       <button type="button" class="secondary" id="btn-filters">Filters</button>
       <button type="button" class="secondary" id="btn-more">More</button>
+      <button type="button" class="secondary" id="btn-refresh" data-refresh aria-label="Refresh — get the newest copy"><svg class="sk-icon"><use href="#i-refresh"/></svg><span class="refresh-label">Refresh</span></button>
     </div>
     <div class="filters" id="filters" hidden>
       <div><label for="f-status">Status</label><select id="f-status"></select></div>
@@ -173,6 +174,7 @@
   <div class="detail-body">
     <p class="note">Changes you make with Select (Won / Lost / Archive / Folders) are saved on this device only, until Jarvis publishes them into the board data.</p>
     <div class="row-btns"><a class="btn secondary" href="daily.html" style="text-decoration:none">Daily Update</a></div>
+    <div class="row-btns"><button type="button" class="secondary" data-refresh aria-label="Refresh — get the newest copy"><svg class="sk-icon"><use href="#i-refresh"/></svg><span class="refresh-label">Refresh</span></button></div>
     <div class="row-btns"><button type="button" id="openChanges">Changes to publish (<span id="changesCount">0</span>)</button></div>
     <h3 style="margin:18px 0 8px">Display</h3>
     <div class="sk-list" id="appearance"></div>
@@ -186,5 +188,6 @@
 <footer class="site">Sharma Electric &amp; HVAC · Lic. EC13013924 · CAC1823596</footer>
 <script src="lock.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/refresh.js"></script>
 <script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) { addEventListener("load", function(){ navigator.serviceWorker.register("sw.js?kit=https://sharma-kit.sharma-crew.workers.dev", { scope: "/sharma-bid-boards/" }).catch(function(){}); }); }</script>
 </body></html>

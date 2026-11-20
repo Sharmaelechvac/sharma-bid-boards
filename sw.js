@@ -10,7 +10,7 @@
      so the encrypted flow stays exactly as-is.
    - Everything else (assets, logos, POSTs): straight to the network.
    Holds no data, passcodes or keys. */
-var VERSION = "sk-shell-v1.3-bids2";
+var VERSION = "sk-shell-v1.3-bids3";
 var KIT = new URL((new URL(self.location.href).searchParams.get("kit") || "https://sharma-kit.sharma-crew.workers.dev").replace(/\/$/, ""), self.location.href).href.replace(/\/$/, "");
 var KIT_FILES = [KIT + "/sharma-kit.css", KIT + "/sharma-kit.js", KIT + "/assets/logo-white-header.png"];
 var BASE = "/sharma-bid-boards/";
