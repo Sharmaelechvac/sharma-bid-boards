@@ -1,28 +1,50 @@
 "use strict";
 /* Shared bid board app — one codebase renders both boards.
    GitHub build: data comes from the decrypted bids.enc.json envelope via lock.js
-   (the local private build in the parent folder still uses data/<board>.json).
-   The app never sends anything; contact emails are mailto: links only. */
+   (SharmaLock.load). The app never sends anything; contact emails are mailto: links only.
+
+   MANAGE (2026-11-19): Select mode with bulk Won / Lost / Archive / Folder,
+   user folders, an Archived view, extended sorting (Builder A–Z / Z–A, due
+   soonest / latest, amount high / low, status, sent), and per-bid Files
+   (estimates & submittals) in the detail. In-app changes persist on this
+   device as a changes overlay in localStorage (sharma-bids-overlay:v1),
+   keyed by the stable row id that tools/build_plain.py derives:
+     slugify(board | builder | project | plan_name | trade | address)
+   with a -2/-3 suffix for rows colliding on every key field (CSV order).
+   More -> "Changes to publish" lists the overlay with per-item Undo and a
+   copyable plain-text summary Jarvis folds into the CSVs, then rebuilds and
+   re-encrypts. Folders live in localStorage (sharma-bids-folders:v1),
+   shared by both boards. */
+const BOARD_NAME = document.body.dataset.board;
 const OPEN_STATUSES = ["Sent", "Pending", "In progress"];
 const STATUSES = ["Sent", "Won", "Lost", "Declined", "Pending", "In progress"];
-const FIELDS = ["builder","contact_name","contact_email","project","address","plan_name",
-  "trade","amount","amount_notes","terms","date_sent","due_date","status",
-  "gmail_account","gmail_thread_id","jobber","houses","next_step","notes","source",
-  "sqft_living","sqft_roof"];
-
-let state = { board: null, title: "", asOf: "2026-11-18", rows: [], filtered: [] };
-
+const STATUS_SORT = ["Sent", "In progress", "Pending", "Won", "Lost", "Declined"];
+const LS_OVERLAY = "sharma-bids-overlay:v1";
+const LS_FOLDERS = "sharma-bids-folders:v1";
+const LS_SORT = "sharma-bids-sort:" + BOARD_NAME;
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const slugify = s => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const ID_FIELDS = ["builder", "project", "plan_name", "trade", "address"];
+function computeIds(list, board) {
+  const seen = {};
+  list.forEach(r => {
+    const base = slugify([board].concat(ID_FIELDS.map(k => r[k] || "")).join("|"));
+    const n = (seen[base] || 0) + 1; seen[base] = n;
+    r.id = n === 1 ? base : base + "-" + n;
+  });
+}
 function parseDatePart(s) {
   if (!s) return null;
   const m = String(s).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return null;
-  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
 }
-function fmtDate(d) { return d ? d.toISOString().slice(0, 10) : ""; }
+const fmtDateObj = d => d ? d.toISOString().slice(0, 10) : "";
+const fmtDate = s => { const d = parseDatePart(s); return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : (s || ""); };
 function amountOf(r) {
   if (typeof r.amount_value === "number") return r.amount_value;
-  const s = String(r.amount || "").replace(/[$,]/g, "").trim();
-  const v = parseFloat(s);
+  const v = parseFloat(String(r.amount || "").replace(/[$,]/g, "").trim());
   return isNaN(v) ? null : v;
 }
 function fmtUSD(v) {
@@ -32,19 +54,88 @@ function fmtUSD(v) {
 function sqftOf(r, kind) {
   const v = r["sqft_" + kind + "_value"];
   if (typeof v === "number") return v;
-  const s = String(r["sqft_" + kind] || "").replace(/,/g, "").trim();
-  const n = parseFloat(s);
+  const n = parseFloat(String(r["sqft_" + kind] || "").replace(/,/g, "").trim());
   return isNaN(n) ? null : n;
 }
-function fmtSF(v) { return v === null || v === undefined ? "" : v.toLocaleString("en-US") + " sq ft"; }
-function isMutual(r) { return /mutually exclusive/i.test((r.amount_notes || "") + " " + (r.notes || "")); }
+const fmtSF = v => (v === null || v === undefined) ? "" : v.toLocaleString("en-US") + " sq ft";
+const isMutual = r => /mutually exclusive/i.test((r.amount_notes || "") + " " + (r.notes || ""));
+function initials(name) {
+  const words = String(name || "").replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  return (words[0][0] + (words.length > 1 ? words[1][0] : "")).toUpperCase();
+}
+function logoHtml(r, cls) {
+  const slug = r.logo || slugify(r.builder);
+  return `<span class="bid-logo-wrap ${cls || ""}"><span class="bid-badge">${esc(initials(r.builder))}</span><img class="bid-logo" src="assets/logos/${esc(slug)}.png" alt="" loading="lazy" onerror="this.remove()"></span>`;
+}
+function chip(status) {
+  const cls = { "Sent": "chip-sent", "Won": "chip-won", "Lost": "chip-lost", "Declined": "chip-declined", "Pending": "chip-pending", "In progress": "chip-inprogress" }[status] || "";
+  return `<span class="chip ${cls}">${esc(status)}</span>`;
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
 
-function computeTotals(rows, asOfStr) {
-  const asOf = parseDatePart(asOfStr);
-  const day = 86400000;
-  // Mutually exclusive groups: builder|project|trade among open rows flagged mutual.
+/* ---------- persistent stores ---------- */
+function lsGet(key, fallback) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; } }
+function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* private mode */ } }
+let overlay = lsGet(LS_OVERLAY, {});
+let folders = lsGet(LS_FOLDERS, []);
+const saveOverlay = () => lsSet(LS_OVERLAY, overlay);
+const saveFolders = () => lsSet(LS_FOLDERS, folders);
+
+/* ---------- data ---------- */
+let BOARD = null;      // this board's payload from the envelope (base state)
+let AS_OF = "2026-11-18";
+let rows = [];         // effective rows for this board (base + overlay)
+let baseById = {};     // id -> base row, both boards
+const state = { q: "", status: "", trade: "", builder: "", dueWin: "", sentWin: "", view: "", sort: lsGet(LS_SORT, "due"), selectMode: false, selected: new Set() };
+let detailId = null;
+let folderTargets = [];
+
+const baseOf = id => baseById[id] || null;
+function effOf(base) {
+  const ov = overlay[base.id];
+  const r = Object.assign({}, base);
+  if (ov) {
+    if ("status" in ov) r.status = ov.status;
+    if ("folder" in ov) r.folder = ov.folder;
+    if ("archived" in ov) r.archived = ov.archived;
+  }
+  r.folder = r.folder || "";
+  r.archived = !!r.archived;
+  return r;
+}
+function rebuildEffective() { rows = (BOARD ? BOARD.rows : []).map(effOf); }
+const labelOf = r => [r.builder, r.project, r.trade].filter(Boolean).join(" — ");
+function pruneOverlay() {
+  let changed = false;
+  Object.keys(overlay).forEach(id => {
+    const base = baseOf(id), ov = overlay[id];
+    if (!base || !ov) return;
+    ["status", "folder", "archived"].forEach(k => {
+      if (k in ov) {
+        const bv = k === "archived" ? !!base[k] : (base[k] || "");
+        if (ov[k] === bv) { delete ov[k]; changed = true; }
+      }
+    });
+    if (!("status" in ov) && !("folder" in ov) && !("archived" in ov)) { delete overlay[id]; changed = true; }
+  });
+  if (changed) saveOverlay();
+}
+function setOverlay(id, patch) {
+  const base = baseOf(id); if (!base) return;
+  const ov = overlay[id] || (overlay[id] = { _label: labelOf(base), _board: base._boardName || BOARD_NAME });
+  Object.assign(ov, patch);
+  pruneOverlay(); saveOverlay(); rebuildEffective();
+}
+const changeCount = () => Object.keys(overlay).length;
+const liveRows = () => rows.filter(r => !r.archived);
+
+/* ---------- totals (same math as before: open pipeline with mutually
+   exclusive option groups counting highest only; archived rows are out) ---------- */
+function computeTotals(list, asOfStr) {
+  const asOf = parseDatePart(asOfStr), day = 86400000;
   const groups = {};
-  rows.forEach((r, i) => {
+  list.forEach((r, i) => {
     if (isMutual(r) && OPEN_STATUSES.includes(r.status)) {
       const k = [r.builder, r.project, r.trade].join("|");
       (groups[k] = groups[k] || []).push(i);
@@ -54,12 +145,12 @@ function computeTotals(rows, asOfStr) {
   Object.values(groups).forEach(idxs => {
     if (idxs.length < 2) return;
     let maxI = idxs[0];
-    idxs.forEach(i => { if ((amountOf(rows[i]) || 0) > (amountOf(rows[maxI]) || 0)) maxI = i; });
+    idxs.forEach(i => { if ((amountOf(list[i]) || 0) > (amountOf(list[maxI]) || 0)) maxI = i; });
     idxs.forEach(i => { if (i !== maxI) excludedIdx.add(i); });
   });
   let pipeline = 0, won = 0, lost = 0, wonN = 0, lostN = 0, due7 = 0;
   const dueList = [];
-  rows.forEach((r, i) => {
+  list.forEach((r, i) => {
     const a = amountOf(r) || 0;
     if (OPEN_STATUSES.includes(r.status) && !excludedIdx.has(i)) pipeline += a;
     if (r.status === "Won") { won += a; wonN++; }
@@ -76,220 +167,463 @@ function computeTotals(rows, asOfStr) {
   return { pipeline, won, lost, wonN, lostN, due7, dueList, winRate, excludedCount: excludedIdx.size };
 }
 
-function slugify(name) { return String(name || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
-function initials(name) {
-  const words = String(name || "").replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
-  if (!words.length) return "?";
-  return (words[0][0] + (words.length > 1 ? words[1][0] : "")).toUpperCase();
+/* ---------- filtering + sorting ---------- */
+function viewRows() {
+  const asOf = parseDatePart(AS_OF), day = 86400000;
+  let out = rows.filter(r => {
+    if (state.view === "__archived") { if (!r.archived) return false; }
+    else {
+      if (r.archived) return false;
+      if (state.view === "__unfiled" && r.folder) return false;
+      if (state.view && state.view !== "__unfiled" && r.folder !== state.view) return false;
+    }
+    if (state.status && r.status !== state.status) return false;
+    if (state.trade && r.trade !== state.trade) return false;
+    if (state.builder && r.builder !== state.builder) return false;
+    if (state.q) {
+      const hay = [r.builder, r.project, r.address, r.contact_name, r.contact_email, r.jobber, r.plan_name, r.notes, r.next_step, r.folder].join(" ").toLowerCase();
+      if (!hay.includes(state.q)) return false;
+    }
+    if (state.dueWin) {
+      const due = parseDatePart(r.due_date);
+      if (state.dueWin === "none") { if (due) return false; }
+      else if (!due) return false;
+      else {
+        const diff = Math.round((due - asOf) / day);
+        if (state.dueWin === "today" && diff !== 0) return false;
+        if (state.dueWin === "overdue" && diff >= 0) return false;
+        if (state.dueWin === "7" && !(diff >= 0 && diff <= 7)) return false;
+        if (state.dueWin === "30" && !(diff >= 0 && diff <= 30)) return false;
+      }
+    }
+    if (state.sentWin) {
+      const sent = parseDatePart(r.date_sent);
+      if (!sent) return false;
+      const diff = Math.round((asOf - sent) / day);
+      if (diff < 0 || diff > +state.sentWin) return false;
+    }
+    return true;
+  });
+  return sortRows(out);
 }
-/* Company logo: real file from assets/logos/<slug>.(png|svg) when the logos sweep has
-   dropped one in; the navy initials badge shows underneath either way, so a missing
-   file never breaks the row. The slug lives inside the encrypted data (row.logo). */
-function logoHtml(r, cls) {
-  const slug = r.logo || slugify(r.builder);
-  return `<span class="bid-logo-wrap ${cls || ""}"><span class="bid-badge">${escapeHtml(initials(r.builder))}</span>`
-    + `<img class="bid-logo" src="assets/logos/${escapeHtml(slug)}.png" alt="" loading="lazy" onerror="this.remove()"></span>`;
-}
-function chip(status) {
-  const cls = { "Sent": "chip-sent", "Won": "chip-won", "Lost": "chip-lost",
-    "Declined": "chip-declined", "Pending": "chip-pending", "In progress": "chip-inprogress" }[status] || "";
-  return `<span class="chip ${cls}">${escapeHtml(status)}</span>`;
-}
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function sortRows(list) {
+  const idx = new Map(list.map((r, i) => [r, i]));
+  const FAR = new Date(8640000000000000).getTime();
+  const dueT = r => { const d = parseDatePart(r.due_date); return d ? d.getTime() : FAR; };
+  const byDue = (a, b) => dueT(a) - dueT(b);
+  const stable = (a, b, c) => c || (idx.get(a) - idx.get(b));
+  const blankLast = (va, vb, cmp) => {
+    const ba = va === "" || va == null, bb = vb === "" || vb == null;
+    if (ba && bb) return 0; if (ba) return 1; if (bb) return -1;
+    return cmp(va, vb);
+  };
+  switch (state.sort) {
+    case "builder": return list.slice().sort((a, b) => stable(a, b, blankLast(a.builder, b.builder, (x, y) => String(x).localeCompare(String(y))) || byDue(a, b)));
+    case "builder-desc": return list.slice().sort((a, b) => stable(a, b, blankLast(a.builder, b.builder, (x, y) => String(y).localeCompare(String(x))) || byDue(a, b)));
+    case "amount-desc": return list.slice().sort((a, b) => stable(a, b, blankLast(amountOf(a), amountOf(b), (x, y) => y - x)));
+    case "amount-asc": return list.slice().sort((a, b) => stable(a, b, blankLast(amountOf(a), amountOf(b), (x, y) => x - y)));
+    case "status": return list.slice().sort((a, b) => stable(a, b, (STATUS_SORT.indexOf(a.status) - STATUS_SORT.indexOf(b.status)) || byDue(a, b)));
+    case "sent": return list.slice().sort((a, b) => stable(a, b, blankLast(a.date_sent, b.date_sent, (x, y) => String(y).localeCompare(String(x)))));
+    case "due-desc": return list.slice().sort((a, b) => stable(a, b, blankLast(a.due_date, b.due_date, (x, y) => String(y).localeCompare(String(x)))));
+    default: return list.slice().sort((a, b) => stable(a, b, byDue(a, b)));
+  }
 }
 
-function renderTotals() {
-  const t = computeTotals(state.rows, state.asOf);
-  document.getElementById("totals").innerHTML = `
+/* ---------- render ---------- */
+function folderList() {
+  const names = folders.slice();
+  rows.forEach(r => { if (r.folder && !names.includes(r.folder)) names.push(r.folder); });
+  return names;
+}
+function render() {
+  const live = liveRows();
+  const t = computeTotals(live, AS_OF);
+  const archN = rows.length - live.length;
+  $("#totals").innerHTML = `
     <div class="total"><div class="label">Open pipeline</div><div class="value">${fmtUSD(t.pipeline)}</div>
       <div class="note">Sent, Pending and In progress${t.excludedCount ? `; mutually exclusive options count highest only (${t.excludedCount} option row${t.excludedCount > 1 ? "s" : ""} not summed)` : ""}</div></div>
     <div class="total"><div class="label">Won total</div><div class="value">${fmtUSD(t.won)}</div><div class="note">${t.wonN} won bid${t.wonN === 1 ? "" : "s"}</div></div>
     <div class="total"><div class="label">Lost total</div><div class="value">${fmtUSD(t.lost)}</div><div class="note">${t.lostN} lost bid${t.lostN === 1 ? "" : "s"}</div></div>
-    <div class="total"><div class="label">Due in next 7 days</div><div class="value">${t.due7}</div><div class="note">From ${state.asOf} (date part of due date)</div></div>
+    <div class="total"><div class="label">Due in next 7 days</div><div class="value">${t.due7}</div><div class="note">From ${AS_OF} (date part of due date)</div></div>
     <div class="total"><div class="label">Win rate</div><div class="value">${t.winRate === null ? "—" : t.winRate.toFixed(1) + "%"}</div>
       <div class="note">Won + Lost rows only (${t.wonN} won, ${t.lostN} lost)</div></div>
-    <div class="total"><div class="label">Bids on board</div><div class="value">${state.rows.length}</div><div class="note">All rows from the data file</div></div>`;
-  const ul = document.getElementById("due-list");
-  if (!t.dueList.length) {
-    ul.innerHTML = `<li class="empty" style="border:none">No open bids due today or overdue as of ${state.asOf}.</li>`;
-  } else {
-    ul.innerHTML = t.dueList.map(({ r, due, diff }) => `
-      <li><span class="due-when">${diff < 0 ? "Overdue — due " + fmtDate(due) : diff === 0 ? "Due today — " + escapeHtml(r.due_date) : "Due " + fmtDate(due)}</span>
-      <span class="due-builder">${escapeHtml(r.builder)}</span><span>${escapeHtml(r.project)}</span>${r.address ? "<span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}
-      <span>${escapeHtml(r.trade)}</span><span class="mono">${fmtUSD(amountOf(r))}</span>${chip(r.status)}</li>`).join("");
-  }
+    <div class="total"><div class="label">Bids on board</div><div class="value">${live.length}</div><div class="note">${archN ? archN + " archived, hidden from the board" : "All rows from the data file"}</div></div>`;
+  const ul = $("#due-list");
+  ul.innerHTML = t.dueList.length ? t.dueList.map(({ r, due, diff }) => `
+      <li data-id="${esc(r.id)}"><span class="due-when">${diff < 0 ? "Overdue — due " + fmtDateObj(due) : diff === 0 ? "Due today — " + esc(r.due_date) : "Due " + fmtDateObj(due)}</span>
+      <span class="due-builder">${esc(r.builder)}</span><span>${esc(r.project)}</span>${r.address ? `<span class="loc">${esc(r.address)}</span>` : ""}
+      <span>${esc(r.trade)}</span><span class="mono">${fmtUSD(amountOf(r))}</span>${chip(r.status)}</li>`).join("")
+    : `<li class="empty" style="border:none">No open bids due today or overdue as of ${AS_OF}.</li>`;
+
+  /* status chips + sidebar status */
+  const counts = {}; live.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  $("#statusChips").innerHTML = [`<button data-st="" aria-pressed="${!state.status}">All (${live.length})</button>`]
+    .concat(STATUSES.filter(s => counts[s]).map(s => `<button data-st="${esc(s)}" aria-pressed="${state.status === s}">${esc(s)} (${counts[s]})</button>`)).join("");
+  $("#side-status").innerHTML = [`<button class="side-item" data-st="">All statuses<span class="side-count">${live.length}</span></button>`]
+    .concat(STATUSES.filter(s => counts[s]).map(s => `<button class="side-item" data-st="${esc(s)}" aria-current="${state.status === s}">${esc(s)}<span class="side-count">${counts[s]}</span></button>`)).join("");
+  const stSel = $("#f-status"); if (stSel.value !== state.status) stSel.value = state.status;
+
+  /* folders: chips (narrow) + sidebar (wide) */
+  const names = folderList();
+  const fcount = {}; live.forEach(r => { if (r.folder) fcount[r.folder] = (fcount[r.folder] || 0) + 1; });
+  const unfiled = live.filter(r => !r.folder).length;
+  $("#folderChips").innerHTML = [`<button data-view="" aria-pressed="${state.view === ""}">All</button>`,
+    `<button data-view="__unfiled" aria-pressed="${state.view === "__unfiled"}">Unfiled (${unfiled})</button>`]
+    .concat(names.map(f => `<button data-view="${esc(f)}" aria-pressed="${state.view === f}">${esc(f)} (${fcount[f] || 0})</button>`))
+    .concat([`<button data-view="__archived" aria-pressed="${state.view === "__archived"}">Archived (${archN})</button>`]).join("");
+  $("#side-folders").innerHTML = names.length ? names.map(f => `<button class="side-item" data-view="${esc(f)}" aria-current="${state.view === f}">${esc(f)}<span class="side-count">${fcount[f] || 0}</span></button>`).join("") : `<p class="side-empty">No folders yet</p>`;
+  $$("#sidebar [data-view]").forEach(b => { if (b.dataset.view === state.view) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+  const cAll = $("[data-count='all']"), cUn = $("[data-count='unfiled']"), cAr = $("[data-count='archived']");
+  if (cAll) cAll.textContent = live.length; if (cUn) cUn.textContent = unfiled; if (cAr) cAr.textContent = archN;
+
+  const list = viewRows();
+  $("#rows").innerHTML = list.length ? list.map(r => `<tr data-id="${esc(r.id)}" tabindex="0" class="${state.selected.has(r.id) ? "is-selected" : ""} ${detailId === r.id ? "is-open" : ""}">
+    <td class="sel-col">${state.selectMode ? `<label class="sel-hit"><input type="checkbox" data-sel="${esc(r.id)}" ${state.selected.has(r.id) ? "checked" : ""} aria-label="Select bid"></label>` : ""}</td>
+    <td data-label="Builder">${logoHtml(r)}<strong>${esc(r.builder)}</strong>${r.contact_name ? `<br>${esc(r.contact_name)}` : ""}${r.contact_email ? `<br><a href="mailto:${esc(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${esc(r.contact_email)}</a>` : ""}</td>
+    <td data-label="Project">${esc(r.project)}${r.plan_name ? `<br>${esc(r.plan_name)}` : ""}${r.address ? `<br><span class="loc">${esc(r.address)}</span>` : ""}${r.folder ? `<br><span class="folder-tag">${esc(r.folder)}</span>` : ""}</td>
+    <td data-label="Trade">${esc(r.trade)}</td>
+    <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
+    <td data-label="Sq Ft" class="sqft">${fmtSF(sqftOf(r, "living"))}${sqftOf(r, "roof") !== null ? `<br><span class="loc2">under roof ${fmtSF(sqftOf(r, "roof"))}</span>` : ""}</td>
+    <td data-label="Sent" class="mono">${esc(r.date_sent)}</td>
+    <td data-label="Due" class="mono">${esc(r.due_date)}</td>
+    <td data-label="Status">${chip(r.status)}</td>
+    <td data-label="Jobber" class="mono">${esc(r.jobber)}</td></tr>`).join("")
+    : `<tr><td colspan="10" class="empty">No bids match these filters.</td></tr>`;
+  $("#cards").innerHTML = list.map(r => `<article class="bid-card ${state.selected.has(r.id) ? "is-selected" : ""}" data-id="${esc(r.id)}">
+    ${state.selectMode ? `<label class="sel-hit card-check"><input type="checkbox" data-sel="${esc(r.id)}" ${state.selected.has(r.id) ? "checked" : ""} aria-label="Select bid"></label>` : ""}
+    <div class="card-top"><span class="builder-cell">${logoHtml(r)}<strong>${esc(r.builder) || "No builder"}</strong></span>${chip(r.status)}</div>
+    <div class="card-proj">${esc(r.project)}</div>
+    ${r.plan_name ? `<div class="card-sub">${esc(r.plan_name)}</div>` : ""}
+    ${r.address ? `<div class="card-sub"><span class="loc">${esc(r.address)}</span></div>` : ""}
+    <div class="card-meta"><span>${esc(r.trade)}</span><span>${fmtUSD(amountOf(r)) || "No amount"}</span><span>${fmtSF(sqftOf(r, "living"))}</span><span>${r.due_date ? "Due " + esc(r.due_date) : ""}</span>${r.folder ? `<span class="folder-tag">${esc(r.folder)}</span>` : ""}</div>
+    ${r.next_step ? `<div class="card-next">${esc(r.next_step)}</div>` : ""}
+  </article>`).join("");
+  $("#row-count").textContent = `${list.length} of ${rows.length} bids shown`;
+  $("#changesCount").textContent = changeCount();
+  renderActionbar();
 }
 
-function uniqueSorted(key) { return [...new Set(state.rows.map(r => r[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
-function fillFilters() {
-  const fill = (id, vals, allLabel) => {
-    const el = document.getElementById(id);
-    el.innerHTML = `<option value="">${allLabel}</option>` + vals.map(v => `<option>${escapeHtml(v)}</option>`).join("");
-  };
-  fill("f-status", STATUSES, "All statuses");
-  fill("f-trade", uniqueSorted("trade"), "All trades");
-  fill("f-builder", uniqueSorted("builder"), "All builders");
+/* ---------- select mode + bulk actions ---------- */
+function renderActionbar() {
+  const bar = $("#actionbar");
+  bar.hidden = !state.selectMode;
+  const n = state.selected.size;
+  $("#selCount").textContent = n === 1 ? "1 selected" : n + " selected";
+  ["#ab-won", "#ab-lost", "#ab-archive", "#ab-folder"].forEach(s => { $(s).disabled = n === 0; });
+  $("#ab-archive").textContent = state.view === "__archived" ? "Unarchive" : "Archive";
+  $("#btn-select").setAttribute("aria-pressed", String(state.selectMode));
+  $("#btn-select").textContent = state.selectMode ? "Selecting…" : "Select";
+  document.body.classList.toggle("selecting", state.selectMode);
+}
+function setSelectMode(on) { state.selectMode = on; if (!on) state.selected.clear(); render(); }
+function toggleSelected(id) { state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id); render(); }
+function bulk(patch, verb) {
+  const ids = Array.from(state.selected);
+  if (!ids.length) return;
+  ids.forEach(id => setOverlay(id, patch));
+  state.selected.clear();
+  render();
+  toast(ids.length + (ids.length === 1 ? " bid " : " bids ") + verb + " — saved on this device");
 }
 
-function applyFilters() {
-  const q = document.getElementById("f-search").value.trim().toLowerCase();
-  const st = document.getElementById("f-status").value, tr = document.getElementById("f-trade").value,
-        bu = document.getElementById("f-builder").value, dw = document.getElementById("f-due").value,
-        sw = document.getElementById("f-sent").value, sort = document.getElementById("f-sort").value;
-  const asOf = parseDatePart(state.asOf), day = 86400000;
-  let rows = state.rows.filter(r => {
-    if (st && r.status !== st) return false;
-    if (tr && r.trade !== tr) return false;
-    if (bu && r.builder !== bu) return false;
-    if (q) {
-      const hay = [r.builder, r.project, r.address, r.contact_name, r.contact_email, r.jobber, r.plan_name].join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    if (dw) {
-      const due = parseDatePart(r.due_date);
-      if (dw === "none") { if (due) return false; }
-      else if (!due) return false;
-      else {
-        const diff = Math.round((due - asOf) / day);
-        if (dw === "today" && diff !== 0) return false;
-        if (dw === "overdue" && diff >= 0) return false;
-        if (dw === "7" && !(diff >= 0 && diff <= 7)) return false;
-        if (dw === "30" && !(diff >= 0 && diff <= 30)) return false;
-      }
-    }
-    if (sw) {
-      const sent = parseDatePart(r.date_sent);
-      if (!sent) return false;
-      const diff = Math.round((asOf - sent) / day);
-      if (diff < 0 || diff > +sw) return false;
-    }
-    return true;
+/* ---------- folders ---------- */
+function createFolder(name) {
+  name = String(name || "").trim();
+  if (!name) return null;
+  if (["__archived", "__unfiled"].includes(name)) { toast("That name is reserved"); return null; }
+  if (!folders.some(f => f.toLowerCase() === name.toLowerCase())) { folders.push(name); saveFolders(); }
+  return folders.find(f => f.toLowerCase() === name.toLowerCase());
+}
+function openFolderSheet(ids) {
+  folderTargets = ids.slice();
+  if (!folderTargets.length) return;
+  $("#folderList").innerHTML = [`<button class="folder-opt" data-folder="">No folder (Unfiled)</button>`]
+    .concat(folderList().map(f => `<button class="folder-opt" data-folder="${esc(f)}">${esc(f)}</button>`)).join("");
+  $("#newFolderName").value = "";
+  $("#folderDlg").showModal();
+}
+function assignFolder(name) {
+  folderTargets.forEach(id => setOverlay(id, { folder: name || "" }));
+  if (state.selected.size) state.selected.clear();
+  folderTargets = [];
+  $("#folderDlg").close();
+  render();
+  toast(name ? "Moved to “" + name + "” — saved on this device" : "Removed from folder — saved on this device");
+}
+function renameFolder(oldName, newName) {
+  newName = String(newName || "").trim();
+  if (!newName || newName === oldName) return;
+  if (folders.some(f => f.toLowerCase() === newName.toLowerCase() && f !== oldName)) { toast("A folder with that name already exists"); return; }
+  folders = folders.map(f => f === oldName ? newName : f); saveFolders();
+  Object.values(baseById).forEach(b => { if (effOf(b).folder === oldName) setOverlay(b.id, { folder: newName }); });
+  if (state.view === oldName) state.view = newName;
+  rebuildEffective(); render(); renderFolderManager();
+  toast("Folder renamed");
+}
+function deleteFolder(name) {
+  folders = folders.filter(f => f !== name); saveFolders();
+  Object.values(baseById).forEach(b => { if (effOf(b).folder === name) setOverlay(b.id, { folder: "" }); });
+  if (state.view === name) state.view = "";
+  rebuildEffective(); render(); renderFolderManager();
+  toast("Folder deleted — its bids are unfiled");
+}
+function renderFolderManager() {
+  const names = folderList();
+  $("#folderManager").innerHTML = names.length ? names.map(f => `<div class="folder-row"><input type="text" value="${esc(f)}" data-fname="${esc(f)}" aria-label="Folder name"><button class="secondary" data-rename="${esc(f)}">Rename</button><button class="secondary" data-del="${esc(f)}">Delete</button></div>`).join("") : `<p class="note">No folders yet. Select bids and use Folder… to create one.</p>`;
+}
+
+/* ---------- changes sheet ---------- */
+function changesLines() {
+  const lines = [], items = [];
+  Object.keys(overlay).sort().forEach(id => {
+    const ov = overlay[id], base = baseOf(id);
+    const label = ov._label || (base ? labelOf(base) : id);
+    const board = ov._board || (base ? base._boardName : "") || BOARD_NAME;
+    if (!base) { items.push({ id, label, board, text: "This bid is no longer on the board." }); return; }
+    const parts = [];
+    if ("status" in ov) { parts.push(`Status: ${base.status || "—"} → ${ov.status}`); lines.push(`${board} | ${id} | status=${ov.status}`); }
+    if ("folder" in ov) { parts.push(`Folder: ${base.folder || "Unfiled"} → ${ov.folder || "Unfiled"}`); lines.push(`${board} | ${id} | folder=${ov.folder}`); }
+    if ("archived" in ov) { parts.push(ov.archived ? "Archived" : "Un-archived"); lines.push(`${board} | ${id} | archived=${ov.archived ? "true" : "false"}`); }
+    if (parts.length) items.push({ id, label, board, text: parts.join(" · ") });
   });
-  const byDue = (a, b) => (parseDatePart(a.due_date) || new Date(8640000000000000)) - (parseDatePart(b.due_date) || new Date(8640000000000000));
-  const sorters = {
-    due: byDue,
-    sent: (a, b) => (parseDatePart(b.date_sent) || 0) - (parseDatePart(a.date_sent) || 0),
-    amount: (a, b) => (amountOf(b) || 0) - (amountOf(a) || 0),
-    builder: (a, b) => a.builder.localeCompare(b.builder) || byDue(a, b),
-    status: (a, b) => STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status) || byDue(a, b)
-  };
-  rows.sort(sorters[sort] || byDue);
-  state.filtered = rows;
-  renderTable();
+  return { lines, items };
+}
+function renderChanges() {
+  const { lines, items } = changesLines();
+  $("#changesSummary").textContent = items.length ? items.length + (items.length === 1 ? " bid" : " bids") + " with changes saved on this device. They reach the published boards when Jarvis folds them into the CSVs and re-encrypts." : "No changes yet. Use Select on a board to mark bids Won / Lost, archive them, or file them in folders.";
+  $("#changesList").innerHTML = items.map(it => `<div class="change-row"><div><strong>${esc(it.label)}</strong><br><small>${esc(it.board)} · ${esc(it.text)}</small></div><button class="secondary" data-undo="${esc(it.id)}">Undo</button></div>`).join("");
+  $("#changesText").value = ["# Bid changes to publish — from the Bid Boards app (this device).",
+    "# Jarvis: for each line, find the row in bid-boards/data/bids-<board>.csv whose",
+    "# computed id matches (tools/build_plain.py derives it), set the field, then",
+    "# rebuild + re-encrypt + publish. folder= with nothing after it means unfiled."].concat(lines).join("\n");
 }
 
-function renderTable() {
-  const tb = document.getElementById("rows");
-  document.getElementById("row-count").textContent = `${state.filtered.length} of ${state.rows.length} bids shown`;
-  if (!state.filtered.length) { tb.innerHTML = `<tr><td colspan="9" class="empty">No bids match these filters.</td></tr>`; return; }
-  tb.innerHTML = state.filtered.map(r => {
-    const i = state.rows.indexOf(r);
-    const email = r.contact_email ? `<a href="mailto:${escapeHtml(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${escapeHtml(r.contact_email)}</a>` : "";
-    return `<tr data-idx="${i}" tabindex="0">
-      <td data-label="Builder">${logoHtml(r)}<strong>${escapeHtml(r.builder)}</strong><br>${escapeHtml(r.contact_name)}<br>${email}</td>
-      <td data-label="Project">${escapeHtml(r.project)}${r.plan_name ? "<br>" + escapeHtml(r.plan_name) : ""}${r.address ? "<br><span class=\"loc\">" + escapeHtml(r.address) + "</span>" : ""}</td>
-      <td data-label="Trade">${escapeHtml(r.trade)}</td>
-      <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
-      <td data-label="Sq Ft" class="sqft">${fmtSF(sqftOf(r, "living"))}${sqftOf(r, "roof") !== null ? "<br><span class=\"loc\">under roof " + fmtSF(sqftOf(r, "roof")) + "</span>" : ""}</td>
-      <td data-label="Sent" class="mono">${escapeHtml(r.date_sent)}</td>
-      <td data-label="Due" class="mono">${escapeHtml(r.due_date)}</td>
-      <td data-label="Status">${chip(r.status)}</td>
-      <td data-label="Jobber" class="mono">${escapeHtml(r.jobber)}</td></tr>`;
+/* ---------- detail (dialog on narrow screens, inspector panel on wide) ---------- */
+function filesHTML(r) {
+  const files = Array.isArray(r.files) ? r.files : [];
+  if (!files.length) return `<dt>Files</dt><dd>No files on record</dd>`;
+  const items = files.map(f => {
+    const name = f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>` : esc(f.name);
+    const when = f.date ? " · " + fmtDate(f.date) : "";
+    const tag = f.url ? "" : ` <span class="onfile">On file</span>`;
+    return `<li><span class="file-kind" data-k="${esc(f.kind)}">${esc(f.kind)}</span> <span class="file-name">${name}</span><small>${when}</small>${tag}</li>`;
   }).join("");
-  tb.querySelectorAll("tr[data-idx]").forEach(tr => {
-    tr.addEventListener("click", () => openDetail(+tr.dataset.idx));
-    tr.addEventListener("keydown", e => { if (e.key === "Enter") openDetail(+tr.dataset.idx); });
-  });
+  return `<dt>Files</dt><dd><ul class="files">${items}</ul></dd>`;
 }
-
-function openDetail(i) {
-  const r = state.rows[i];
-  const labels = { builder:"Builder", contact_name:"Contact", contact_email:"Contact email", project:"Project",
-    address:"Address", plan_name:"Plan", trade:"Trade", amount:"Amount", amount_notes:"Amount notes", terms:"Terms",
-    date_sent:"Date sent", due_date:"Due date", status:"Status", gmail_account:"Gmail account",
-    gmail_thread_id:"Gmail thread ID", jobber:"Jobber", houses:"Houses", next_step:"Next step", notes:"Notes", source:"Source",
-    sqft_living: state.board === "commercial" ? "Project sq ft" : "Living SF", sqft_roof: "Under Roof SF" };
-  document.getElementById("detail-title").innerHTML = logoHtml(r, "detail-logo") + escapeHtml(`${r.builder} — ${r.project}`);
-  document.getElementById("detail-body").innerHTML = "<dl>" + FIELDS.map(k => {
+function detailHTML(r) {
+  const labels = { builder: "Builder", contact_name: "Contact", contact_email: "Contact email", project: "Project",
+    address: "Address", plan_name: "Plan", trade: "Trade", amount: "Amount", amount_notes: "Amount notes", terms: "Terms",
+    date_sent: "Date sent", due_date: "Due date", status: "Status", gmail_account: "Gmail account",
+    gmail_thread_id: "Gmail thread ID", jobber: "Jobber", houses: "Houses", next_step: "Next step", notes: "Notes", source: "Source",
+    sqft_living: BOARD_NAME === "commercial" ? "Project sq ft" : "Living SF", sqft_roof: "Under Roof SF" };
+  const fields = (BOARD.fields || Object.keys(labels)).filter(k => k in labels);
+  const dl = fields.map(k => {
     let v = k === "amount" ? (fmtUSD(amountOf(r)) || "") : (k === "sqft_living" || k === "sqft_roof") ? fmtSF(sqftOf(r, k.slice(5))) : r[k];
-    if (k === "address" && v) v = `<span class="loc">${escapeHtml(v)}</span>`;
-    else if (k === "contact_email" && v) v = `<a href="mailto:${escapeHtml(String(v).split(";")[0].trim())}">${escapeHtml(v)}</a>`;
-    else v = escapeHtml(v || "");
+    if (k === "address" && v) v = `<span class="loc">${esc(v)}</span>`;
+    else if (k === "contact_email" && v) v = `<a href="mailto:${esc(String(v).split(";")[0].trim())}">${esc(v)}</a>`;
+    else v = esc(v || "");
     return `<dt>${labels[k]}</dt><dd>${v || '<span style="color:var(--gray)">—</span>'}</dd>`;
-  }).join("") + "</dl>";
-  document.getElementById("detail").showModal();
+  }).join("");
+  return `<div class="detail-head"><h2>${logoHtml(r, "detail-logo")}${esc(r.builder + " — " + r.project)}</h2></div>
+  <div class="detail-body"><dl>${dl}
+  <dt>Folder</dt><dd>${esc(r.folder || "Unfiled")}</dd>
+  ${r.archived ? `<dt>Archived</dt><dd>Yes — hidden from the board lists</dd>` : ""}
+  ${filesHTML(r)}</dl>
+  <div class="row-btns detail-actions">
+    <button data-act="folder">Move to folder…</button>
+    <button class="secondary" data-act="archive">${r.archived ? "Unarchive" : "Archive"}</button>
+  </div></div>`;
+}
+function openDetail(id) {
+  const r = rows.find(x => x.id === id); if (!r) return;
+  detailId = id;
+  const html = detailHTML(r);
+  if (window.matchMedia("(min-width: 1100px)").matches) {
+    $("#inspectorBody").innerHTML = html;
+    $("#inspector").hidden = false;
+    if ($("#detail").open) $("#detail").close();
+  } else {
+    $("#detailBody").innerHTML = html;
+    $("#inspector").hidden = true;
+    if (!$("#detail").open) $("#detail").showModal();
+  }
+  render();
+}
+function closeDetail() {
+  detailId = null;
+  $("#inspector").hidden = true;
+  if ($("#detail").open) $("#detail").close();
+  render();
+}
+function detailAction(act) {
+  const r = rows.find(x => x.id === detailId); if (!r) return;
+  if (act === "folder") { if ($("#detail").open) $("#detail").close(); openFolderSheet([r.id]); }
+  if (act === "archive") { setOverlay(r.id, { archived: !r.archived }); toast(r.archived ? "Bid archived — saved on this device" : "Bid un-archived"); closeDetail(); render(); }
 }
 
-/* CSV parse/serialize — same header as the source files. */
+/* ---------- CSV import / export (keeps the folder + archived columns) ---------- */
 function parseCSV(text) {
-  const rows = []; let row = [], cur = "", inQ = false;
-  text = text.replace(/^\uFEFF/, "");
+  const out = []; let row = [], cell = "", q = false;
+  text = text.replace(/^﻿/, "");
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (inQ) {
-      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
-      else cur += c;
-    } else if (c === '"') inQ = true;
-    else if (c === ",") { row.push(cur); cur = ""; }
-    else if (c === "\n" || c === "\r") {
-      if (c === "\r" && text[i + 1] === "\n") i++;
-      row.push(cur); cur = "";
-      if (row.length > 1 || row[0] !== "") rows.push(row);
-      row = [];
-    } else cur += c;
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); out.push(row); row = []; cell = ""; }
+    else cell += c;
   }
-  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
-  if (!rows.length) return [];
-  const head = rows[0].map(h => h.trim().toLowerCase());
-  return rows.slice(1).filter(r => r.some(c => String(c).trim() !== "")).map(r => {
+  if (cell || row.length) { row.push(cell); out.push(row); }
+  if (!out.length) return [];
+  const head = out[0].map(h => h.trim().toLowerCase());
+  return out.slice(1).filter(r => r.some(c => String(c).trim() !== "")).map(cells => {
     const o = {};
-    FIELDS.forEach(k => { const idx = head.indexOf(k); o[k] = idx >= 0 ? String(r[idx] ?? "").trim() : ""; });
-    const s = String(o.amount || "").replace(/[$,]/g, "").trim(); const v = parseFloat(s);
-    o.amount_value = isNaN(v) ? null : v;
+    BOARD.fields.forEach(k => { const idx = head.indexOf(k); o[k] = idx >= 0 ? String(cells[idx] ?? "").trim() : ""; });
+    o.amount_value = amountOf(o);
+    o.sqft_living_value = sqftOf(o, "living"); o.sqft_roof_value = sqftOf(o, "roof");
+    o.logo = slugify(o.builder);
+    o.archived = ["true", "1", "yes"].includes(String(o.archived).toLowerCase());
+    o.files = [];
     return o;
   });
 }
-function toCSV(rows) {
-  const esc = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  return [FIELDS.join(",")].concat(rows.map(r => FIELDS.map(k => esc(k === "amount" ? (r.amount || (r.amount_value ?? "")) : r[k])).join(","))).join("\r\n") + "\r\n";
+function toCSV(list) {
+  const fields = BOARD.fields;
+  const cell = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return [fields.join(",")].concat(list.map(r => fields.map(f => {
+    if (f === "archived") return r.archived ? "true" : "";
+    if (f === "amount") return amountOf(r) != null ? amountOf(r) : (r.amount || "");
+    return cell(r[f]);
+  }).join(","))).join("\r\n") + "\r\n";
 }
 
+/* ---------- wiring ---------- */
+function fillFilters() {
+  const uniq = key => [...new Set(rows.map(r => r[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const fill = (id, vals, allLabel) => { const el = $(id); const cur = el.value; el.innerHTML = `<option value="">${allLabel}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join(""); el.value = cur; };
+  fill("#f-status", STATUSES, "All statuses");
+  fill("#f-trade", uniq("trade"), "All trades");
+  fill("#f-builder", uniq("builder"), "All builders");
+}
+function wire() {
+  $("#f-search").addEventListener("input", e => { state.q = e.target.value.trim().toLowerCase(); render(); });
+  const sortSel = $("#sortSel");
+  sortSel.value = ["due", "due-desc", "builder", "builder-desc", "amount-desc", "amount-asc", "status", "sent"].includes(state.sort) ? state.sort : "due";
+  state.sort = sortSel.value;
+  sortSel.addEventListener("change", () => { state.sort = sortSel.value; lsSet(LS_SORT, state.sort); render(); });
+  $("#btn-filters").addEventListener("click", () => { const f = $("#filters"); f.hidden = !f.hidden; });
+  $("#f-status").addEventListener("change", e => { state.status = e.target.value; render(); });
+  $("#f-trade").addEventListener("change", e => { state.trade = e.target.value; render(); });
+  $("#f-builder").addEventListener("change", e => { state.builder = e.target.value; render(); });
+  $("#f-due").addEventListener("change", e => { state.dueWin = e.target.value; render(); });
+  $("#f-sent").addEventListener("change", e => { state.sentWin = e.target.value; render(); });
+  $("#statusChips").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (b) { state.status = b.dataset.st; render(); } });
+  $("#side-status").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (b) { state.status = b.dataset.st; render(); } });
+  $("#folderChips").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) { state.view = b.dataset.view; render(); } });
+  $("#sidebar").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) { state.view = b.dataset.view; render(); } });
+  $("#btn-clear").addEventListener("click", () => {
+    Object.assign(state, { q: "", status: "", trade: "", builder: "", dueWin: "", sentWin: "", view: "" });
+    $("#f-search").value = ""; ["#f-status", "#f-trade", "#f-builder", "#f-due", "#f-sent"].forEach(s => { $(s).value = ""; });
+    render();
+  });
+
+  const pick = e => {
+    if (e.target.closest("a")) return;
+    const cb = e.target.closest("[data-sel]");
+    if (cb) { toggleSelected(cb.dataset.sel); return; }
+    if (e.target.closest("label.sel-hit")) return; /* the label's synthesized input click does it */
+    const el = e.target.closest("[data-id]");
+    if (!el) return;
+    if (state.selectMode) toggleSelected(el.dataset.id); else openDetail(el.dataset.id);
+  };
+  $("#rows").addEventListener("click", pick);
+  $("#cards").addEventListener("click", pick);
+  $("#due-list").addEventListener("click", e => { const li = e.target.closest("[data-id]"); if (li && !state.selectMode) openDetail(li.dataset.id); });
+  $("#rows").addEventListener("keydown", e => { const tr = e.target.closest("tr[data-id]"); if (tr && e.key === "Enter" && !state.selectMode) openDetail(tr.dataset.id); });
+
+  $("#btn-select").addEventListener("click", () => setSelectMode(!state.selectMode));
+  $("#ab-done").addEventListener("click", () => setSelectMode(false));
+  $("#ab-clear").addEventListener("click", () => { state.selected.clear(); render(); });
+  $("#ab-won").addEventListener("click", () => bulk({ status: "Won" }, "marked Won"));
+  $("#ab-lost").addEventListener("click", () => bulk({ status: "Lost" }, "marked Lost"));
+  $("#ab-archive").addEventListener("click", () => bulk({ archived: state.view !== "__archived" }, state.view === "__archived" ? "un-archived" : "archived"));
+  $("#ab-folder").addEventListener("click", () => openFolderSheet(Array.from(state.selected)));
+
+  $("#folderList").addEventListener("click", e => { const b = e.target.closest("[data-folder]"); if (b) assignFolder(b.dataset.folder); });
+  $("#createFolderBtn").addEventListener("click", () => { const name = createFolder($("#newFolderName").value); if (name) assignFolder(name); else if (!$("#newFolderName").value.trim()) toast("Type a folder name first"); });
+  $("#folderDlgClose").addEventListener("click", () => $("#folderDlg").close());
+  $("#side-new-folder").addEventListener("click", () => { renderFolderManager(); $("#more").showModal(); setTimeout(() => $("#mgrNewFolder").focus(), 60); });
+
+  const detailClick = e => { const b = e.target.closest("[data-act]"); if (b) detailAction(b.dataset.act); };
+  $("#detailBody").addEventListener("click", detailClick);
+  $("#inspectorBody").addEventListener("click", detailClick);
+  $("#detail-close").addEventListener("click", closeDetail);
+  $("#insp-close").addEventListener("click", closeDetail);
+  $("#detail").addEventListener("close", () => { if (detailId) { detailId = null; render(); } });
+
+  $("#btn-more").addEventListener("click", () => { renderFolderManager(); renderChanges(); $("#more").showModal(); });
+  $("#more-close").addEventListener("click", () => $("#more").close());
+  $("#openChanges").addEventListener("click", () => { $("#more").close(); renderChanges(); $("#changesDlg").showModal(); });
+  $("#changesClose").addEventListener("click", () => $("#changesDlg").close());
+  $("#changesList").addEventListener("click", e => { const b = e.target.closest("[data-undo]"); if (!b) return; delete overlay[b.dataset.undo]; saveOverlay(); rebuildEffective(); render(); renderChanges(); toast("Change undone"); });
+  $("#copyChanges").addEventListener("click", async () => {
+    const ta = $("#changesText"); ta.select();
+    try { await navigator.clipboard.writeText(ta.value); toast("Summary copied — send it to Jarvis"); }
+    catch (e) { if (document.execCommand) document.execCommand("copy"); toast("Summary selected — copy it and send to Jarvis"); }
+  });
+  $("#folderManager").addEventListener("click", e => {
+    const rn = e.target.closest("[data-rename]"), del = e.target.closest("[data-del]");
+    if (rn) { const input = $(`#folderManager input[data-fname="${CSS.escape(rn.dataset.rename)}"]`); if (input) renameFolder(rn.dataset.rename, input.value); }
+    if (del) {
+      if (del.dataset.armed) deleteFolder(del.dataset.del);
+      else { del.dataset.armed = "1"; del.textContent = "Tap again to delete"; setTimeout(() => { del.dataset.armed = ""; del.textContent = "Delete"; }, 3000); }
+    }
+  });
+  $("#mgrAddFolder").addEventListener("click", () => { const name = createFolder($("#mgrNewFolder").value); if (name) { $("#mgrNewFolder").value = ""; render(); renderFolderManager(); toast("Folder “" + name + "” created"); } });
+
+  $("#btn-export").addEventListener("click", () => {
+    const blob = new Blob([toCSV(rows)], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `bids-${BOARD_NAME}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+  $("#file-import").addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const imported = parseCSV(await f.text());
+    if (!imported.length) { $("#import-note").textContent = "No rows found in that CSV."; return; }
+    BOARD.rows = imported;
+    computeIds(BOARD.rows, BOARD_NAME);
+    BOARD.rows.forEach(r => { r._boardName = BOARD_NAME; baseById[r.id] = r; });
+    pruneOverlay(); rebuildEffective(); fillFilters(); render();
+    $("#import-note").textContent = `Imported ${imported.length} rows from ${f.name} for this view only. To make it permanent, save the CSV with the board data and re-run the encrypt step (tools/encrypt.py).`;
+  });
+  $("#btn-locknow").addEventListener("click", () => { try { sessionStorage.removeItem("sharma-bids-key:v1"); } catch (e) {} location.reload(); });
+}
+
+/* ---------- boot ---------- */
 async function init() {
-  const board = document.body.dataset.board;
-  state.board = board;
-  // GitHub build: data comes only from the decrypted bids.enc.json envelope
-  // via the Sharma lock. There is no plaintext data file on the site.
+  if (window.SK && SK.scheme && SK.scheme.mountToggle) SK.scheme.mountToggle($("#appearance"));
+  wire();
   const bundle = await window.SharmaLock.load("bids.enc.json", {
     appName: "Sharma Bid Boards", logo: "logo.png",
     blurb: "Enter the office code to see the bids."
   });
-  const data = bundle.boards[board];
-  state.title = data.board; state.asOf = data.asOf || state.asOf; state.rows = data.rows;
-  document.getElementById("as-of").textContent = `Data as of ${state.asOf}. Owner-only board. Prices are internal.`;
-  fillFilters(); renderTotals(); applyFilters();
-  ["f-status","f-trade","f-builder","f-due","f-sent","f-sort"].forEach(id =>
-    document.getElementById(id).addEventListener("change", applyFilters));
-  document.getElementById("f-search").addEventListener("input", applyFilters);
-  document.getElementById("btn-export").addEventListener("click", () => {
-    const blob = new Blob([toCSV(state.rows)], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = `bids-${state.board}.csv`; a.click();
-    URL.revokeObjectURL(a.href);
+  Object.keys(bundle.boards || {}).forEach(bn => {
+    bundle.boards[bn].rows.forEach(r => { r._boardName = bn; if (r.id) baseById[r.id] = r; });
   });
-  document.getElementById("file-import").addEventListener("change", async e => {
-    const f = e.target.files[0]; if (!f) return;
-    const rows = parseCSV(await f.text());
-    if (!rows.length) { alert("No rows found in that CSV."); return; }
-    state.rows = rows; fillFilters(); renderTotals(); applyFilters();
-    document.getElementById("import-note").textContent = `Imported ${rows.length} rows from ${f.name} for this view only. To make it permanent, save the CSV with the board data and re-run the encrypt step (tools/encrypt.py).`;
-  });
-  document.getElementById("detail-close").addEventListener("click", () => document.getElementById("detail").close());
-  const moreBtn = document.getElementById("btn-more");
-  if (moreBtn) moreBtn.addEventListener("click", () => document.getElementById("more").showModal());
-  const moreClose = document.getElementById("more-close");
-  if (moreClose) moreClose.addEventListener("click", () => document.getElementById("more").close());
-  const ap = document.getElementById("appearance");
-  if (ap && window.SK && SK.scheme && SK.scheme.mountToggle) SK.scheme.mountToggle(ap);
+  BOARD = bundle.boards[BOARD_NAME];
+  /* Envelopes published before the Manage build carry no row ids — derive
+     them with the same algorithm build_plain.py uses, so the boards keep
+     working until the next encrypt publish lands. */
+  if (BOARD.rows.some(r => !r.id)) {
+    computeIds(BOARD.rows, BOARD_NAME);
+    BOARD.rows.forEach(r => { baseById[r.id] = r; });
+  }
+  AS_OF = BOARD.asOf || AS_OF;
+  $("#as-of").textContent = `Data as of ${AS_OF}. Owner-only board. Prices are internal.`;
+  pruneOverlay();
+  rebuildEffective();
+  fillFilters();
+  render();
 }
 document.addEventListener("DOMContentLoaded", init);
