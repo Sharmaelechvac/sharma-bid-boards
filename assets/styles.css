@@ -218,3 +218,20 @@ footer.site{max-width:1280px;margin:0 auto;padding:8px 16px 28px;color:var(--gra
 html,body{overscroll-behavior:none}
 tbody tr,.bid-card,.toolbar,.chips,#sidebar,.due-list li{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 footer.site{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+
+/* Daily Update view (daily.html) */
+.du-list{list-style:none;margin:0;padding:0}
+.du-list li{display:flex;gap:10px;align-items:baseline;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--lines)}
+.du-list li:last-child{border-bottom:0}
+.du-main{flex:1 1 auto}
+.du-meta{color:var(--gray);font-size:.9rem;display:block}
+.du-amt{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-weight:700;white-space:nowrap}
+.du-total{margin-top:10px}
+.du-email{padding:9px 0;border-bottom:1px solid var(--lines)}
+.du-email:last-child{border-bottom:0}
+.du-said{font-style:italic;margin:4px 0}
+.du-h3{font-size:1.05rem;margin:14px 0 4px}
+.du-arch-btn{width:100%;background:transparent;border:0;color:var(--ink);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:44px;padding:6px 2px;cursor:pointer;font-size:1rem}
+.du-arch-btn .du-meta{display:inline}
+.du-sample{border:2px solid var(--gold);background:#fdf6e3}
+[data-scheme="dark"] .du-sample{background:#3a2f10}
