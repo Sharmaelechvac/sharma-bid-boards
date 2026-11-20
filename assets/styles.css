@@ -211,3 +211,10 @@ footer.site{max-width:1280px;margin:0 auto;padding:8px 16px 28px;color:var(--gra
   #toast{bottom:30px}
   body.selecting #toast{bottom:100px}
 }
+
+/* App-readiness feel (boards' own CSS; the kit covers its own parts):
+   no overscroll bounce, no long-press callout / text selection on board
+   rows and toolbar, safe-area-aware footer padding. */
+html,body{overscroll-behavior:none}
+tbody tr,.bid-card,.toolbar,.chips,#sidebar,.due-list li{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+footer.site{padding-bottom:calc(28px + env(safe-area-inset-bottom))}

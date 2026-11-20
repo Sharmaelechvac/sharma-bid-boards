@@ -301,6 +301,31 @@ function render() {
   $("#row-count").textContent = `${list.length} of ${rows.length} bids shown`;
   $("#changesCount").textContent = changeCount();
   renderActionbar();
+  updateBadge();
+}
+
+/* App badge (App Readiness, client-only): bids due today or tomorrow,
+   excluding Won / Lost / archived. Each board stashes its count with
+   today's date (bb_due_<board>); the badge shows the sum of the counts
+   stamped today, and clears at 0. It refreshes when a board is opened —
+   background updates arrive only with push (not yet wired). */
+function updateBadge() {
+  try {
+    if (!("setAppBadge" in navigator)) return;
+    const now = new Date();
+    const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const today = iso(now), tomorrow = iso(new Date(now.getTime() + 86400000));
+    const n = rows.filter(r => {
+      if (r.archived || r.status === "Won" || r.status === "Lost") return false;
+      const due = String(r.due_date || "").slice(0, 10);
+      return due === today || due === tomorrow;
+    }).length;
+    lsSet("bb_due_" + BOARD_NAME, { count: n, date: today });
+    let sum = 0;
+    ["commercial", "residential"].forEach(b => { const s = lsGet("bb_due_" + b, null); if (s && s.date === today) sum += s.count || 0; });
+    if (sum > 0) { const p = navigator.setAppBadge(sum); if (p && p.catch) p.catch(() => {}); }
+    else if ("clearAppBadge" in navigator) { const p = navigator.clearAppBadge(); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) { /* badge is best-effort */ }
 }
 
 /* ---------- select mode + bulk actions ---------- */
