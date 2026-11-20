@@ -178,6 +178,7 @@
     <div class="row-btns"><button type="button" id="openChanges">Changes to publish (<span id="changesCount">0</span>)</button></div>
     <h3 style="margin:18px 0 8px">Display</h3>
     <div class="sk-list" id="appearance"></div>
+    <div data-sharma-notif style="margin-top:18px"></div>
     <h3 style="margin:18px 0 8px">Folders</h3>
     <div id="folderManager"></div>
     <div class="folder-new-row"><input id="mgrNewFolder" type="text" autocomplete="off" placeholder="New folder name"><button type="button" id="mgrAddFolder">Add folder</button></div>
@@ -189,5 +190,6 @@
 <script src="lock.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/refresh.js"></script>
+<script src="assets/sharma-notif.js" defer></script>
 <script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) { addEventListener("load", function(){ navigator.serviceWorker.register("sw.js?kit=https://sharma-kit.sharma-crew.workers.dev", { scope: "/sharma-bid-boards/" }).catch(function(){}); }); }</script>
 </body></html>
