@@ -21,6 +21,11 @@ const STATUSES = ["Sent", "Won", "Lost", "Declined", "Pending", "In progress"];
 const STATUS_SORT = ["Sent", "In progress", "Pending", "Won", "Lost", "Declined"];
 const LS_OVERLAY = "sharma-bids-overlay:v1";
 const LS_FOLDERS = "sharma-bids-folders:v1";
+/* CONFIG — Follow-up button target: Jarvis's Muse Mail mailbox
+   ("Jarvis, on behalf of Sanjay"), approved by Sanjay 2026-11-19.
+   This is the single place the address lives; change it here only. */
+const JARVIS_FOLLOWUP_EMAIL = "jarvis-sharma@muse.ai";
+const LS_FOLLOWUPS = "sharma-bids-followups:v1";
 const LS_SORT = "sharma-bids-sort:" + BOARD_NAME;
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -79,6 +84,8 @@ function lsGet(key, fallback) { try { const v = localStorage.getItem(key); retur
 function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* private mode */ } }
 let overlay = lsGet(LS_OVERLAY, {});
 let folders = lsGet(LS_FOLDERS, []);
+let fuMarks = lsGet(LS_FOLLOWUPS, {});   // rowId -> "YYYY-MM-DD" the follow-up was requested
+let fuTargets = [];                      // rows the follow-up confirm sheet will ask about
 const saveOverlay = () => lsSet(LS_OVERLAY, overlay);
 const saveFolders = () => lsSet(LS_FOLDERS, folders);
 
@@ -280,7 +287,7 @@ function render() {
   $("#rows").innerHTML = list.length ? list.map(r => `<tr data-id="${esc(r.id)}" tabindex="0" class="${state.selected.has(r.id) ? "is-selected" : ""} ${detailId === r.id ? "is-open" : ""}">
     <td class="sel-col">${state.selectMode ? `<label class="sel-hit"><input type="checkbox" data-sel="${esc(r.id)}" ${state.selected.has(r.id) ? "checked" : ""} aria-label="Select bid"></label>` : ""}</td>
     <td data-label="Builder">${logoHtml(r)}<strong>${esc(r.builder)}</strong>${r.contact_name ? `<br>${esc(r.contact_name)}` : ""}${r.contact_email ? `<br><a href="mailto:${esc(r.contact_email.split(";")[0].trim())}" onclick="event.stopPropagation()">${esc(r.contact_email)}</a>` : ""}</td>
-    <td data-label="Project">${esc(r.project)}${r.plan_name ? `<br>${esc(r.plan_name)}` : ""}${r.address ? `<br><span class="loc">${esc(r.address)}</span>` : ""}${r.folder ? `<br><span class="folder-tag">${esc(r.folder)}</span>` : ""}</td>
+    <td data-label="Project">${esc(r.project)}${r.plan_name ? `<br>${esc(r.plan_name)}` : ""}${r.address ? `<br><span class="loc">${esc(r.address)}</span>` : ""}${r.folder ? `<br><span class="folder-tag">${esc(r.folder)}</span>` : ""}${fuMarks[r.id] ? `<br><span class="fu-tag">Follow-up requested · ${esc(fmtDate(fuMarks[r.id]))}</span>` : ""}</td>
     <td data-label="Trade">${esc(r.trade)}</td>
     <td data-label="Amount" class="amount">${fmtUSD(amountOf(r))}</td>
     <td data-label="Sq Ft" class="sqft">${fmtSF(sqftOf(r, "living"))}${sqftOf(r, "roof") !== null ? `<br><span class="loc2">under roof ${fmtSF(sqftOf(r, "roof"))}</span>` : ""}</td>
@@ -295,7 +302,7 @@ function render() {
     <div class="card-proj">${esc(r.project)}</div>
     ${r.plan_name ? `<div class="card-sub">${esc(r.plan_name)}</div>` : ""}
     ${r.address ? `<div class="card-sub"><span class="loc">${esc(r.address)}</span></div>` : ""}
-    <div class="card-meta"><span>${esc(r.trade)}</span><span>${fmtUSD(amountOf(r)) || "No amount"}</span><span>${fmtSF(sqftOf(r, "living"))}</span><span>${r.due_date ? "Due " + esc(r.due_date) : ""}</span>${r.folder ? `<span class="folder-tag">${esc(r.folder)}</span>` : ""}</div>
+    <div class="card-meta"><span>${esc(r.trade)}</span><span>${fmtUSD(amountOf(r)) || "No amount"}</span><span>${fmtSF(sqftOf(r, "living"))}</span><span>${r.due_date ? "Due " + esc(r.due_date) : ""}</span>${r.folder ? `<span class="folder-tag">${esc(r.folder)}</span>` : ""}${fuMarks[r.id] ? `<span class="fu-tag">Follow-up requested · ${esc(fmtDate(fuMarks[r.id]))}</span>` : ""}</div>
     ${r.next_step ? `<div class="card-next">${esc(r.next_step)}</div>` : ""}
   </article>`).join("");
   $("#row-count").textContent = `${list.length} of ${rows.length} bids shown`;
@@ -334,7 +341,7 @@ function renderActionbar() {
   bar.hidden = !state.selectMode;
   const n = state.selected.size;
   $("#selCount").textContent = n === 1 ? "1 selected" : n + " selected";
-  ["#ab-won", "#ab-lost", "#ab-archive", "#ab-folder"].forEach(s => { $(s).disabled = n === 0; });
+  ["#ab-won", "#ab-lost", "#ab-archive", "#ab-folder", "#ab-followup"].forEach(s => { $(s).disabled = n === 0; });
   $("#ab-archive").textContent = state.view === "__archived" ? "Unarchive" : "Archive";
   $("#btn-select").setAttribute("aria-pressed", String(state.selectMode));
   $("#btn-select").textContent = state.selectMode ? "Selecting…" : "Select";
@@ -453,8 +460,10 @@ function detailHTML(r) {
   <div class="detail-body"><dl>${dl}
   <dt>Folder</dt><dd>${esc(r.folder || "Unfiled")}</dd>
   ${r.archived ? `<dt>Archived</dt><dd>Yes — hidden from the board lists</dd>` : ""}
+  ${fuMarks[r.id] ? `<dt>Follow-up</dt><dd>Requested · ${esc(fmtDate(fuMarks[r.id]))} (marked on this device — Jarvis confirms in chat when the draft is ready)</dd>` : ""}
   ${filesHTML(r)}</dl>
   <div class="row-btns detail-actions">
+    ${r.contact_email ? `<button data-act="followup">Follow up</button>` : ""}
     <button data-act="folder">Move to folder…</button>
     <button class="secondary" data-act="archive">${r.archived ? "Unarchive" : "Archive"}</button>
   </div></div>`;
@@ -484,6 +493,66 @@ function detailAction(act) {
   const r = rows.find(x => x.id === detailId); if (!r) return;
   if (act === "folder") { if ($("#detail").open) $("#detail").close(); openFolderSheet([r.id]); }
   if (act === "archive") { setOverlay(r.id, { archived: !r.archived }); toast(r.archived ? "Bid archived — saved on this device" : "Bid un-archived"); closeDetail(); render(); }
+  if (act === "followup") { if ($("#detail").open) $("#detail").close(); openFollowup([r]); }
+}
+
+/* ---------- follow-up requests ----------
+   The Follow up button NEVER contacts the builder. It opens the phone's
+   Mail with a prefilled request to Jarvis (JARVIS_FOLLOWUP_EMAIL above);
+   one tap in Mail sends it. Jarvis then drafts the follow-up in office@
+   on the original thread — draft only, Sanjay approves before any send.
+   The local mark (LS_FOLLOWUPS) means "requested", nothing more: Jarvis's
+   chat confirmation is the completion signal. Marks deliberately live
+   OUTSIDE the changes overlay so they never reach the CSVs. */
+function fuToday() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function followupBlock(r) {
+  return ["Board: " + (r._boardName === "residential" ? "Residential" : "Commercial"),
+    "Builder: " + (r.builder || ""),
+    "Project: " + (r.project || ""),
+    "Contact: " + [r.contact_name, r.contact_email].filter(Boolean).join(" · "),
+    "Trade: " + (r.trade || ""),
+    "Address: " + (r.address || ""),
+    "Status: " + (r.status || ""),
+    "Amount: " + (fmtUSD(amountOf(r)) || ""),
+    "Date sent: " + (r.date_sent || ""),
+    "Due date: " + (r.due_date || ""),
+    "Gmail thread ID: " + (r.gmail_thread_id || ""),
+    "Next step: " + (r.next_step || ""),
+    "Row ID: " + r.id].join("\n");
+}
+function followupMailto(list) {
+  const subject = list.length === 1 ? `FOLLOW UP: ${list[0].project} — ${list[0].builder}` : `FOLLOW UP: ${list.length} bids`;
+  const body = "Please draft a follow-up for the bid(s) below — draft only, on the original thread where one exists. Sanjay approves before anything is sent.\n\n"
+    + list.map(followupBlock).join("\n---\n");
+  return `mailto:${JARVIS_FOLLOWUP_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+function openFollowup(candidates) {
+  fuTargets = candidates.filter(r => r.contact_email);
+  const skipped = candidates.length - fuTargets.length;
+  if (fuTargets.length === 1) {
+    const r = fuTargets[0];
+    $("#fuText").textContent = `Ask Jarvis to draft a follow-up to ${r.contact_name || r.contact_email} at ${r.builder} for ${r.project}?`;
+  } else {
+    $("#fuText").textContent = `Ask Jarvis to draft follow-ups for ${fuTargets.length} bids?`;
+  }
+  $("#fuDetails").innerHTML = fuTargets.map(r => `<div class="change-row"><div><strong>${esc(r.project)}</strong><br><small>${esc(r.builder)} · ${esc(r.contact_name || r.contact_email)}${fuMarks[r.id] ? " · already requested " + esc(fmtDate(fuMarks[r.id])) : ""}</small></div></div>`).join("")
+    + (skipped ? `<p class="note">${skipped} selected bid${skipped === 1 ? " has" : "s have"} no contact email on record and will be skipped — Jarvis never guesses a contact.</p>` : "")
+    + `<p class="note">This opens your Mail with a prefilled request to Jarvis (${esc(JARVIS_FOLLOWUP_EMAIL)}). One tap in Mail sends the request. The button itself sends nothing to the builder.</p>`;
+  $("#fu-confirm").disabled = !fuTargets.length;
+  $("#followupDlg").showModal();
+}
+function confirmFollowup() {
+  if (!fuTargets.length) return;
+  const url = followupMailto(fuTargets);
+  const today = fuToday();
+  fuTargets.forEach(r => { fuMarks[r.id] = today; });
+  lsSet(LS_FOLLOWUPS, fuMarks);
+  fuTargets = [];
+  $("#followupDlg").close();
+  if (state.selected.size) state.selected.clear();
+  render();
+  toast("Opening Mail — request to Jarvis; marked on this device");
+  window.location.href = url;
 }
 
 /* ---------- CSV import / export (keeps the folder + archived columns) ---------- */
@@ -573,6 +642,9 @@ function wire() {
   $("#ab-lost").addEventListener("click", () => bulk({ status: "Lost" }, "marked Lost"));
   $("#ab-archive").addEventListener("click", () => bulk({ archived: state.view !== "__archived" }, state.view === "__archived" ? "un-archived" : "archived"));
   $("#ab-folder").addEventListener("click", () => openFolderSheet(Array.from(state.selected)));
+  $("#ab-followup").addEventListener("click", () => openFollowup(Array.from(state.selected).map(id => rows.find(r => r.id === id)).filter(Boolean)));
+  $("#fu-confirm").addEventListener("click", confirmFollowup);
+  $("#fu-cancel").addEventListener("click", () => $("#followupDlg").close());
 
   $("#folderList").addEventListener("click", e => { const b = e.target.closest("[data-folder]"); if (b) assignFolder(b.dataset.folder); });
   $("#createFolderBtn").addEventListener("click", () => { const name = createFolder($("#newFolderName").value); if (name) assignFolder(name); else if (!$("#newFolderName").value.trim()) toast("Type a folder name first"); });

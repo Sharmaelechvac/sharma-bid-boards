@@ -235,3 +235,5 @@ footer.site{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
 .du-arch-btn .du-meta{display:inline}
 .du-sample{border:2px solid var(--gold);background:#fdf6e3}
 [data-scheme="dark"] .du-sample{background:#3a2f10}
+.fu-tag{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:#fdf0d5;color:#7a5200;font-size:.8rem;font-weight:700}
+[data-scheme="dark"] .fu-tag{background:#4d3d14;color:#ffe1a1}

@@ -136,12 +136,20 @@
     <button type="button" id="ab-lost">Lost</button>
     <button type="button" id="ab-archive">Archive</button>
     <button type="button" id="ab-folder">Folder…</button>
+    <button type="button" id="ab-followup">Follow up</button>
     <button type="button" class="secondary" id="ab-clear">Clear</button>
     <button type="button" class="secondary" id="ab-done">Done</button>
   </div>
 </div>
 
 <dialog id="detail"><div id="detailBody"></div><div class="detail-foot"><button type="button" id="detail-close">Close</button></div></dialog>
+
+<dialog id="followupDlg" class="sheet"><div class="detail-head"><h2>Follow up</h2></div>
+<div class="detail-body">
+<p id="fuText"></p>
+<div id="fuDetails"></div>
+<div class="row-btns"><button type="button" id="fu-confirm">Ask Jarvis</button><button type="button" class="secondary" id="fu-cancel">Cancel</button></div>
+</div></dialog>
 
 <dialog id="folderDlg" class="sheet"><div class="detail-head"><h2>Move to folder</h2></div>
 <div class="detail-body">
